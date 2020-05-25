@@ -19,6 +19,7 @@ import com.kircherelectronics.fsensor.sensor.FSensor;
 import com.kircherelectronics.fsensor.sensor.acceleration.LinearAccelerationSensor;
 import com.kircherelectronics.fsensor.sensor.gyroscope.ComplementaryGyroscopeSensor;
 import com.kircherelectronics.fsensor.sensor.gyroscope.GyroscopeSensor;
+import com.kircherelectronics.fsensor.sensor.gyroscope.KalmanGyroscopeSensor;
 
 import java.io.BufferedWriter;
 import java.io.FileOutputStream;
@@ -40,6 +41,10 @@ public class MainActivity extends Activity {
     double[] accelerometerValues = new double[3];
     double[] gravity_pre = new double[3];
     double[] rotationvector = new double[4];
+    float[] t_a = new float[3];
+    double[] oula = new double[3];
+    float[] l_a = new float[3];
+
     private SensorManager sm;
     //需要两个Sensor
     private Sensor aSensor;
@@ -106,7 +111,7 @@ public class MainActivity extends Activity {
             float[] filteredAcceleration = ((MeanFilter) baseFilter).filter(values);
             for(int i = 0; i < 3; i++) {
                 accelerometerValues[i] = Double.parseDouble(String.valueOf(filteredAcceleration[i]));
-                Log.d(TAG, "asdasdasd:" + accelerometerValues[i] + " " + filteredAcceleration[i]);
+                //Log.d(TAG, "asdasdasd:" + accelerometerValues[i] + " " + filteredAcceleration[i]);
             }
             calculateOrientation();
             s = System.currentTimeMillis();
@@ -134,24 +139,53 @@ public class MainActivity extends Activity {
 
     final SensorEventListener myListener2 = new SensorEventListener() {
         public void onSensorChanged(SensorEvent sensorEvent) {
+            end = System.currentTimeMillis();
             if(sensorEvent.sensor.getType() == Sensor.TYPE_ACCELEROMETER){
-                a_t = System.currentTimeMillis();
-                end = System.currentTimeMillis();
-                c++;
-                if(s - f >= 1000){
-                    f = System.currentTimeMillis();
-                    textView5.setText("count: " + c);
-                    c = 0;
+                l_a = sensorEvent.values;
+                if(f_y && rotationvector[0] != 0){
+                    oula[0] = 0;
+                    y_begin = Math.toDegrees(rotationvector[0]);
+                    f_y = false;
+                    Log.d(TAG, "y_beginasdasd: " + rotationvector[0]);
+                }else {
+                    oula[0] = Math.toDegrees(rotationvector[0]) - y_begin;
+                    //Log.d(TAG, "y_begin: " + y_begin);
+                    Log.d(TAG, "oula[0]: " + oula[0]);
                 }
-                float[] aa = sensorEvent.values;
-                for(int i = 0; i < 3; i++) {
-                    accelerometerValues[i] = Double.parseDouble(String.valueOf(aa[i]));
-                    Log.d(TAG, "asdasdasd:" + accelerometerValues[i] + " " + aa[i]);
-                }
+                //oula[0] = Math.toDegrees(rotationvector[0]);
+        /*oula2[1] = (float)Math.toDegrees(oula2[1]);
+        oula2[2] = (float)Math.toDegrees(oula2[2]);*/
+                oula[1] = Math.toDegrees(rotationvector[1]);
+                oula[2] = Math.toDegrees(rotationvector[2]);
+                double a = oula[1]*Math.PI/180;
+                double b = oula[2]*Math.PI/180;
+                double c = oula[0]*Math.PI/180;
+
+                double[] t_g = new double[3];
+                double G = Math.sqrt(gravity[0]*gravity[0] + gravity[1]*gravity[1] + gravity[2]*gravity[2]);
+                //double G = 9.88;
+        /*t_g[0] = (-Math.cos(a)*Math.sin(b))*G;
+        t_g[1] = -Math.sin(a)*G;
+        t_g[2] = Math.cos(a)*Math.cos(b)*G;*/
+
+                t_g[0] = Math.cos(a)*Math.sin(b)*G;
+                t_g[1] = -Math.sin(a)*G;
+                t_g[2] = Math.cos(a)*Math.cos(b)*G;
+
+                t_a[0] = (float) ((double)l_a[0]-t_g[0]);
+                t_a[1] = (float) ((double)l_a[1]-t_g[1]);
+                t_a[2] = (float) ((double)l_a[2]-t_g[2]);
+                t_a[0] = (float) ((Math.cos(b)*Math.cos(c) + Math.sin(a)*Math.sin(b)*Math.sin(c))*t_a[0] + Math.cos(a)*Math.sin(c)*t_a[1] + (Math.cos(b)*Math.sin(a)*Math.sin(c) - Math.cos(c)*Math.sin(b))*t_a[2]);
+                t_a[1] = (float) ((Math.cos(c)*Math.sin(a)*Math.sin(b) - Math.cos(b)*Math.sin(c))*t_a[0] + Math.cos(a)*Math.cos(c)*t_a[1] + (Math.sin(b)*Math.sin(c) + Math.cos(b)*Math.cos(c)*Math.sin(a))*t_a[2]);
+                t_a[2] = (float) (Math.cos(a)*Math.sin(b)*t_a[0] + (-Math.sin(a))*t_a[1] + Math.cos(a)*Math.cos(b)*t_a[2]);
+                t_a = ((MeanFilter) baseFilter).filter(t_a);
+                //double acc = Math.sqrt(t_a[0]*t_a[0] + t_a[1]*t_a[1] + t_a[2]*t_a[2]);
+        /*double a = oula[1]*Math.PI/180;
+        double b = oula[2]*Math.PI/180;*/
                 calculateOrientation();
-                s = System.currentTimeMillis();
-                start = end;
+
             }
+            start = end;
 
         }
 
@@ -214,18 +248,18 @@ public class MainActivity extends Activity {
 
         sm = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         //sm = getSensorManager(context);
-        //aSensor = sm.getDefaultSensor(Sensor.TYPE_GRAVITY);
-        //mSensor = sm.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
-        //lSensor = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        aSensor = sm.getDefaultSensor(Sensor.TYPE_GRAVITY);
+        mSensor = sm.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
+        lSensor = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         //rSensor = sm.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
 
-        //sm.registerListener(myListener1, aSensor, 0);
-        //sm.registerListener(myListener3, mSensor, 0);
-        //sm.registerListener(myListener2, lSensor, 0);
+        sm.registerListener(myListener1, aSensor, 0);
+        sm.registerListener(myListener3, mSensor, 0);
+        sm.registerListener(myListener2, lSensor, 0);
         //sm.registerListener(myListener4, rSensor, 0);
         linearaccSensor = new LinearAccelerationSensor(this);
         linearaccSensor.register(linearaccObserver);
-        linearaccSensor.start();
+        //linearaccSensor.start();
         gyroscopeSensor = new ComplementaryGyroscopeSensor(this);
         gyroscopeSensor.register(gyroscopeObserver);
         gyroscopeSensor.start();
@@ -233,15 +267,7 @@ public class MainActivity extends Activity {
         ((MeanFilter) baseFilter).setTimeConstant((float) 0.5);
         //更新显示数据的方法
         //if (debug == 1) {
-            try {
-                SimpleDateFormat sdf = new SimpleDateFormat("yyy-MM-dd HH:mm:ss");
-                Date date = new Date();
-                fileOutputStream = openFileOutput(sdf.format(date) + ".csv", Context.MODE_PRIVATE);
-                bufferedWriter = new BufferedWriter(new OutputStreamWriter(fileOutputStream));
-                bufferedWriter.write("x,y,z,delta_t\n");
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+
         //}
 
         calculateOrientation();
@@ -251,6 +277,15 @@ public class MainActivity extends Activity {
             if(debug == 1) {
                 debug = 0;
             }else{
+                try {
+                    SimpleDateFormat sdf = new SimpleDateFormat("yyy-MM-dd HH:mm:ss");
+                    Date date = new Date();
+                    fileOutputStream = openFileOutput(sdf.format(date) + ".csv", Context.MODE_PRIVATE);
+                    bufferedWriter = new BufferedWriter(new OutputStreamWriter(fileOutputStream));
+                    bufferedWriter.write("delta_t,x,y,z\n");
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
                 debug = 1;
             }
         });
@@ -276,8 +311,8 @@ public class MainActivity extends Activity {
 
     @SuppressLint("SetTextI18n")
     private void calculateOrientation() {
-        double[] l_a = accelerometerValues;
-        double[] g_a = gravity;
+        //double[] l_a = accelerometerValues;
+        //double[] g_a = gravity;
         double alpha = 0.9;
         /*gravity_pre[0] = alpha * gravity_pre[0] + (1 - alpha) * g_a[0];
         gravity_pre[1] = alpha * gravity_pre[1] + (1 - alpha) * g_a[1];
@@ -289,21 +324,22 @@ public class MainActivity extends Activity {
         if(l_a[1] < 0){
             t_a = -t_a;
         }*/
-        double[] oula = new double[3];
-        /*float[] R = new float[9];
+        //double[] oula = new double[3];
+        /*float[] oula2 = new float[3];
+        float[] R = new float[9];
         float[] g_fl = {(float)gravity[0], (float)gravity[1], (float)gravity[2]};
         //float[] g_fl = {(float)accelerometerValues[0], (float)accelerometerValues[1], (float)accelerometerValues[2]};
         float[] m_fl = {(float)magneticFieldValues[0], (float)magneticFieldValues[1], (float)magneticFieldValues[2]};
         SensorManager.getRotationMatrix(R,null, g_fl,  m_fl);
-        SensorManager.getOrientation(R, oula);
+        SensorManager.getOrientation(R, oula2);
         Log.d(TAG, "accelerometerValues: " + R[0] + " " + R[1] + " " + R[2]);*/
 
         /*float[] rv = {(float)rotationvector[0], (float)rotationvector[1], (float)rotationvector[2]};
         SensorManager.getRotationMatrixFromVector(R, rv);
-        SensorManager.getOrientation(R, oula);*/
+        SensorManager.getOrientation(R, oula2);*/
 
         // 要经过一次数据格式的转换，转换为度
-        if(f_y && rotationvector[0] != 0){
+        /*if(f_y && rotationvector[0] != 0){
             oula[0] = 0;
             y_begin = Math.toDegrees(rotationvector[0]);
             f_y = false;
@@ -314,6 +350,8 @@ public class MainActivity extends Activity {
             Log.d(TAG, "oula[0]: " + oula[0]);
         }
         //oula[0] = Math.toDegrees(rotationvector[0]);
+        *//*oula2[1] = (float)Math.toDegrees(oula2[1]);
+        oula2[2] = (float)Math.toDegrees(oula2[2]);*//*
         oula[1] = Math.toDegrees(rotationvector[1]);
         oula[2] = Math.toDegrees(rotationvector[2]);
         double a = oula[1]*Math.PI/180;
@@ -325,8 +363,9 @@ public class MainActivity extends Activity {
         t_a[0] = (Math.cos(b)*Math.cos(c) + Math.sin(a)*Math.sin(b)*Math.sin(c))*l_a[0] + Math.cos(a)*Math.sin(c)*l_a[1] + (Math.cos(b)*Math.sin(a)*Math.sin(c) - Math.cos(c)*Math.sin(b))*l_a[2];
         t_a[1] = (Math.cos(c)*Math.sin(a)*Math.sin(b) - Math.cos(b)*Math.sin(c))*l_a[0] + Math.cos(a)*Math.cos(c)*l_a[1] + (Math.sin(b)*Math.sin(c) + Math.cos(b)*Math.cos(c)*Math.sin(a))*l_a[2];
         t_a[2] = Math.cos(a)*Math.sin(b)*l_a[0] + (-Math.sin(a))*l_a[1] + Math.cos(a)*Math.cos(b)*l_a[2];
-        /*double a = oula[1]*Math.PI/180;
-        double b = oula[2]*Math.PI/180;
+        double acc = Math.sqrt(t_a[0]*t_a[0] + t_a[1]*t_a[1] + t_a[2]*t_a[2]);
+        *//*double a = oula[1]*Math.PI/180;
+        double b = oula[2]*Math.PI/180;*//*
         double G = Math.sqrt(gravity[0]*gravity[0] + gravity[1]*gravity[1] + gravity[2]*gravity[2]);
         //double G = 9.88;
         *//*t_g[0] = (-Math.cos(a)*Math.sin(b))*G;
@@ -368,6 +407,13 @@ public class MainActivity extends Activity {
         p = (1 - k) * p
         x = x + k * (a - x)
      */
+        if(debug == 1) {
+            try {
+                bufferedWriter.write((double)(end - start)/1000d + "," + t_a[0] + "," + t_a[1] + "," + t_a[2] + "\n");
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
         double g = 0;
         double s = 0;
         x = x;
@@ -376,13 +422,7 @@ public class MainActivity extends Activity {
 
         x = x + k * (l_a[1] - x);
         p = (1 - k) * p + q;
-        if(debug == 1) {
-            try {
-                bufferedWriter.write(l_a[0] + "," + l_a[1] + "," + l_a[2]  + "," + (double)(end - start)/1000d + "\n");
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
+
         if(count != win_size){
             win_a[count] = x;
             x_arr[count] = x;
@@ -472,7 +512,8 @@ public class MainActivity extends Activity {
         textView6.setText("vvv: " + v*100 + "cm/s");
 
         textView2.setText("x:" + l_a[0]*100 + "\ny:" + l_a[1]*100 + "\nz:" + l_a[2]*100 + "\ng:" + Math.sqrt(l_a[0]*l_a[0]+l_a[1]*l_a[1]+l_a[2]*l_a[2]) + "\njiange: " + (end - start) + "\nasd:" + (a_t-g_t));
-        textView7.setText("\nyaw: " + oula[0] + "\npitch: " + oula[1] + "\nroll: " + oula[2] + "\nt_x: " + t_a[0] + "\nt_y: " + t_a[1] + "\nt_z: " + t_a[2]);
+        textView7.setText("\nyaw: " + oula[0] + "\npitch: " + oula[1] + "\nroll: " + oula[2] + "\nt_x: " +
+                t_a[0]*100 + "\nt_y: " + t_a[1]*100 + "\nt_z: " + t_a[2]*100 + "\nacc: ");// + "\nt_g_x: " + t_g[0] + "\nt_g_y: " + t_g[1] + "\nt_g_z: " + t_g[2]);
 
         Log.d(TAG, "l_a - x: " + (l_a[1] - x));
         Log.d(TAG, "k: " + k);
