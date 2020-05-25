@@ -1,5 +1,6 @@
 package com.example.eulerangle;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
 import android.hardware.Sensor;
@@ -11,8 +12,15 @@ import android.util.Log;
 import android.widget.Button;
 import android.widget.TextView;
 
+import com.kircherelectronics.fsensor.BaseFilter;
+import com.kircherelectronics.fsensor.filter.averaging.MeanFilter;
+import com.kircherelectronics.fsensor.observer.SensorSubject;
+import com.kircherelectronics.fsensor.sensor.FSensor;
+import com.kircherelectronics.fsensor.sensor.acceleration.LinearAccelerationSensor;
+import com.kircherelectronics.fsensor.sensor.gyroscope.ComplementaryGyroscopeSensor;
+import com.kircherelectronics.fsensor.sensor.gyroscope.GyroscopeSensor;
+
 import java.io.BufferedWriter;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
@@ -27,14 +35,17 @@ import java.util.Queue;
 public class MainActivity extends Activity {
 
     private static final String TAG = "sensor";
-    double[] accelerometerValues = new double[3];
+    double[] gravity = new double[3];
     double[] magneticFieldValues = new double[3];
-    double[] linearaccelerometerValues = new double[3];
+    double[] accelerometerValues = new double[3];
+    double[] gravity_pre = new double[3];
+    double[] rotationvector = new double[4];
     private SensorManager sm;
     //需要两个Sensor
     private Sensor aSensor;
     private Sensor mSensor;
     private Sensor lSensor;
+    private Sensor rSensor;
     private TextView textView1, textView2, textView3, textView4, textView5, textView6, textView7, textView8;
     long start, end;
     int count = 0;
@@ -58,40 +69,73 @@ public class MainActivity extends Activity {
     double total = 0;
     int debug = 0;
     long delta_t = 4;
+    long a_t;
+    long g_t;
+    boolean f_y = true;
+    double y_begin;
+    FSensor linearaccSensor;
+    FSensor gyroscopeSensor;
+    BaseFilter baseFilter;
     //final Context context;
     DecimalFormat decimalFormat = new DecimalFormat("0.0000");
     Queue<Double> queue = new LinkedList<>();
     FileOutputStream fileOutputStream = null;
     BufferedWriter bufferedWriter = null;
     int r_count = 0;
-    final SensorEventListener myListener = new SensorEventListener() {
-        public void onSensorChanged(SensorEvent sensorEvent) {
 
-            /*if (sensorEvent.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD)
-                magneticFieldValues = sensorEvent.values;
-                count++;
-                if(end - start >= 1000) {
-                    start = System.currentTimeMillis();
-                    count = 0;
+    private SensorSubject.SensorObserver gyroscopeObserver = new SensorSubject.SensorObserver() {
+        @Override
+        public void onSensorChanged(float[] values) {
+            for(int i = 0; i < 4; i++) {
+                rotationvector[i] = Double.parseDouble(String.valueOf(values[i]));
+            }
+        }
+    };
+
+    private SensorSubject.SensorObserver linearaccObserver = new SensorSubject.SensorObserver() {
+        @Override
+        public void onSensorChanged(float[] values) {
+            a_t = System.currentTimeMillis();
+            end = System.currentTimeMillis();
+            c++;
+            if(s - f >= 1000){
+                f = System.currentTimeMillis();
+                textView5.setText("count: " + values[3]);
+                c = 0;
+            }
+            float[] filteredAcceleration = ((MeanFilter) baseFilter).filter(values);
+            for(int i = 0; i < 3; i++) {
+                accelerometerValues[i] = Double.parseDouble(String.valueOf(filteredAcceleration[i]));
+                Log.d(TAG, "asdasdasd:" + accelerometerValues[i] + " " + filteredAcceleration[i]);
+            }
+            calculateOrientation();
+            s = System.currentTimeMillis();
+            start = end;
+        }
+    };
+    final SensorEventListener myListener1 = new SensorEventListener() {
+            public void onSensorChanged(SensorEvent sensorEvent) {
+                if(sensorEvent.sensor.getType() == Sensor.TYPE_GRAVITY){
+                    g_t = System.currentTimeMillis();
+                    float[] aa = sensorEvent.values;
+                    for(int i = 0; i < 3; i++) {
+                        gravity[i] = Double.parseDouble(String.valueOf(aa[i]));
+                        Log.d(TAG, "asdasdasd:" + gravity[i] + " " + aa[i]);
+                    }
                 }
-                linearaccelerometerValues = sensorEvent.values;
-                end = System.currentTimeMillis();
-                calculateOrientation();
-                Log.d(TAG, "Start: " + start);
-                Log.d(TAG, "End: " + end);
-            if (sensorEvent.sensor.getType() == Sensor.TYPE_ACCELEROMETER)
-                accelerometerValues = sensorEvent.values;
-                count++;
-                if(end - start >= 1000) {
-                    start = System.currentTimeMillis();
-                    count = 0;
-                }
-                linearaccelerometerValues = sensorEvent.values;
-                end = System.currentTimeMillis();
-                calculateOrientation();
-                Log.d(TAG, "Start: " + start);
-                Log.d(TAG, "End: " + end);*/
+
+            }
+
+
+
+        public void onAccuracyChanged(Sensor sensor, int accuracy) {
+        }
+    };
+
+    final SensorEventListener myListener2 = new SensorEventListener() {
+        public void onSensorChanged(SensorEvent sensorEvent) {
             if(sensorEvent.sensor.getType() == Sensor.TYPE_ACCELEROMETER){
+                a_t = System.currentTimeMillis();
                 end = System.currentTimeMillis();
                 c++;
                 if(s - f >= 1000){
@@ -100,9 +144,9 @@ public class MainActivity extends Activity {
                     c = 0;
                 }
                 float[] aa = sensorEvent.values;
-                for(int i = 0; i < 3; i++){
-                    linearaccelerometerValues[i] = Double.valueOf(String.valueOf(aa[i]));
-                    Log.d(TAG, "asdasdasd:" + linearaccelerometerValues[i] + " " + aa[i]);
+                for(int i = 0; i < 3; i++) {
+                    accelerometerValues[i] = Double.parseDouble(String.valueOf(aa[i]));
+                    Log.d(TAG, "asdasdasd:" + accelerometerValues[i] + " " + aa[i]);
                 }
                 calculateOrientation();
                 s = System.currentTimeMillis();
@@ -111,9 +155,42 @@ public class MainActivity extends Activity {
 
         }
 
+
+
         public void onAccuracyChanged(Sensor sensor, int accuracy) {
         }
     };
+    final SensorEventListener myListener3 = new SensorEventListener() {
+        public void onSensorChanged(SensorEvent sensorEvent) {
+
+            if (sensorEvent.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD) {
+                float[] aa = sensorEvent.values;
+                for (int i = 0; i < 3; i++) {
+                    magneticFieldValues[i] = Double.parseDouble(String.valueOf(aa[i]));
+                    Log.d(TAG, "asdasdasd:" + magneticFieldValues[i] + " " + aa[i]);
+                }
+            }
+        }
+
+
+        public void onAccuracyChanged(Sensor sensor, int accuracy) {
+        }
+    };
+    /*final SensorEventListener myListener4 = new SensorEventListener() {
+        public void onSensorChanged(SensorEvent sensorEvent) {
+            if (sensorEvent.sensor.getType() == Sensor.TYPE_ROTATION_VECTOR) {
+                float[] aa = sensorEvent.values;
+                for (int i = 0; i < 5; i++) {
+                    rotationvector[i] = Double.valueOf(String.valueOf(aa[i]));
+                    Log.d(TAG, "rotation:" + rotationvector[i] + " " + aa.length);
+                }
+            }
+        }
+
+
+        public void onAccuracyChanged(Sensor sensor, int accuracy) {
+        }
+    };*/
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -137,13 +214,23 @@ public class MainActivity extends Activity {
 
         sm = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         //sm = getSensorManager(context);
-        //aSensor = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        //aSensor = sm.getDefaultSensor(Sensor.TYPE_GRAVITY);
         //mSensor = sm.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
-        lSensor = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        //lSensor = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        //rSensor = sm.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
 
-        //sm.registerListener(myListener, aSensor, 0);
-        //sm.registerListener(myListener, mSensor, 0);
-        sm.registerListener(myListener, lSensor, SensorManager.SENSOR_DELAY_FASTEST);
+        //sm.registerListener(myListener1, aSensor, 0);
+        //sm.registerListener(myListener3, mSensor, 0);
+        //sm.registerListener(myListener2, lSensor, 0);
+        //sm.registerListener(myListener4, rSensor, 0);
+        linearaccSensor = new LinearAccelerationSensor(this);
+        linearaccSensor.register(linearaccObserver);
+        linearaccSensor.start();
+        gyroscopeSensor = new ComplementaryGyroscopeSensor(this);
+        gyroscopeSensor.register(gyroscopeObserver);
+        gyroscopeSensor.start();
+        baseFilter = new MeanFilter();
+        ((MeanFilter) baseFilter).setTimeConstant((float) 0.5);
         //更新显示数据的方法
         //if (debug == 1) {
             try {
@@ -151,7 +238,7 @@ public class MainActivity extends Activity {
                 Date date = new Date();
                 fileOutputStream = openFileOutput(sdf.format(date) + ".csv", Context.MODE_PRIVATE);
                 bufferedWriter = new BufferedWriter(new OutputStreamWriter(fileOutputStream));
-                bufferedWriter.write("origin_acc,x,win_a,vel,pos,delta_t\n");
+                bufferedWriter.write("x,y,z,delta_t\n");
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -176,7 +263,7 @@ public class MainActivity extends Activity {
 
     //再次强调：注意activity暂停的时候释放
     public void onPause() {
-        sm.unregisterListener(myListener);
+        sm.unregisterListener(myListener1);
         super.onPause();
         if(debug == 1) {
             try {
@@ -187,25 +274,72 @@ public class MainActivity extends Activity {
         }
     }
 
+    @SuppressLint("SetTextI18n")
     private void calculateOrientation() {
-        //double[] values = new double[3];
-        double[] l_a = linearaccelerometerValues;
+        double[] l_a = accelerometerValues;
+        double[] g_a = gravity;
+        double alpha = 0.9;
+        /*gravity_pre[0] = alpha * gravity_pre[0] + (1 - alpha) * g_a[0];
+        gravity_pre[1] = alpha * gravity_pre[1] + (1 - alpha) * g_a[1];
+        gravity_pre[2] = alpha * gravity_pre[2] + (1 - alpha) * g_a[2];
+        l_a[0] = l_a[0]-gravity_pre[0];
+        l_a[1] = l_a[1]-gravity_pre[1];
+        l_a[2] = l_a[2]-gravity_pre[2];*/
         /*double t_a = Math.sqrt(l_a[0]*l_a[0]+l_a[1]*l_a[1]+l_a[2]*l_a[2]);
         if(l_a[1] < 0){
             t_a = -t_a;
         }*/
-        /*double[] R = new double[9];
-        SensorManager.getRotationMatrix(R, null, accelerometerValues, magneticFieldValues);
-        SensorManager.getOrientation(R, values);
+        double[] oula = new double[3];
+        /*float[] R = new float[9];
+        float[] g_fl = {(float)gravity[0], (float)gravity[1], (float)gravity[2]};
+        //float[] g_fl = {(float)accelerometerValues[0], (float)accelerometerValues[1], (float)accelerometerValues[2]};
+        float[] m_fl = {(float)magneticFieldValues[0], (float)magneticFieldValues[1], (float)magneticFieldValues[2]};
+        SensorManager.getRotationMatrix(R,null, g_fl,  m_fl);
+        SensorManager.getOrientation(R, oula);
+        Log.d(TAG, "accelerometerValues: " + R[0] + " " + R[1] + " " + R[2]);*/
+
+        /*float[] rv = {(float)rotationvector[0], (float)rotationvector[1], (float)rotationvector[2]};
+        SensorManager.getRotationMatrixFromVector(R, rv);
+        SensorManager.getOrientation(R, oula);*/
 
         // 要经过一次数据格式的转换，转换为度
-        values[0] = (double) Math.toDegrees(values[0]);
-        textView1.setText(Double.toString(values[0]));
-        values[1] = (double) Math.toDegrees(values[1]);
-        textView2.setText(Double.toString(values[1]));
-        values[2] = (double) Math.toDegrees(values[2]);
-        textView3.setText(Double.toString(values[2]));*/
+        if(f_y && rotationvector[0] != 0){
+            oula[0] = 0;
+            y_begin = Math.toDegrees(rotationvector[0]);
+            f_y = false;
+            Log.d(TAG, "y_beginasdasd: " + rotationvector[0]);
+        }else {
+            oula[0] = Math.toDegrees(rotationvector[0]) - y_begin;
+            //Log.d(TAG, "y_begin: " + y_begin);
+            Log.d(TAG, "oula[0]: " + oula[0]);
+        }
+        //oula[0] = Math.toDegrees(rotationvector[0]);
+        oula[1] = Math.toDegrees(rotationvector[1]);
+        oula[2] = Math.toDegrees(rotationvector[2]);
+        double a = oula[1]*Math.PI/180;
+        double b = oula[2]*Math.PI/180;
+        double c = oula[0]*Math.PI/180;
 
+        double[] t_g = new double[3];
+        double[] t_a = new double[3];
+        t_a[0] = (Math.cos(b)*Math.cos(c) + Math.sin(a)*Math.sin(b)*Math.sin(c))*l_a[0] + Math.cos(a)*Math.sin(c)*l_a[1] + (Math.cos(b)*Math.sin(a)*Math.sin(c) - Math.cos(c)*Math.sin(b))*l_a[2];
+        t_a[1] = (Math.cos(c)*Math.sin(a)*Math.sin(b) - Math.cos(b)*Math.sin(c))*l_a[0] + Math.cos(a)*Math.cos(c)*l_a[1] + (Math.sin(b)*Math.sin(c) + Math.cos(b)*Math.cos(c)*Math.sin(a))*l_a[2];
+        t_a[2] = Math.cos(a)*Math.sin(b)*l_a[0] + (-Math.sin(a))*l_a[1] + Math.cos(a)*Math.cos(b)*l_a[2];
+        /*double a = oula[1]*Math.PI/180;
+        double b = oula[2]*Math.PI/180;
+        double G = Math.sqrt(gravity[0]*gravity[0] + gravity[1]*gravity[1] + gravity[2]*gravity[2]);
+        //double G = 9.88;
+        *//*t_g[0] = (-Math.cos(a)*Math.sin(b))*G;
+        t_g[1] = -Math.sin(a)*G;
+        t_g[2] = Math.cos(a)*Math.cos(b)*G;*//*
+
+        t_g[0] = Math.cos(a)*Math.sin(b)*G;
+        t_g[1] = -Math.sin(a)*G;
+        t_g[2] = Math.cos(a)*Math.cos(b)*G;
+
+        l_a[0] = l_a[0]-t_g[0];
+        l_a[1] = l_a[1]-t_g[1];
+        l_a[2] = l_a[2]-t_g[2];*/
         /*if(Math.abs(l_a[0]) < 0.01){
             x = 0;
         }else {
@@ -242,7 +376,13 @@ public class MainActivity extends Activity {
 
         x = x + k * (l_a[1] - x);
         p = (1 - k) * p + q;
-
+        if(debug == 1) {
+            try {
+                bufferedWriter.write(l_a[0] + "," + l_a[1] + "," + l_a[2]  + "," + (double)(end - start)/1000d + "\n");
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
         if(count != win_size){
             win_a[count] = x;
             x_arr[count] = x;
@@ -301,7 +441,7 @@ public class MainActivity extends Activity {
                 Log.d(TAG, "vel: " + vel[i]);
             }
             pos += v_pre*delta_t/1000d;
-            for(int i = 1; i < win_size; i++){
+            /*for(int i = 1; i < win_size; i++){
                 pos += vel[i]*(double)delta_t/1000d;
                 Log.d(TAG, "qwe:" + o_a[i] + "," + x_arr[i] + "," + win_a[i] + "," + vel[i] + "," + pos + "\n");
                 if(debug == 1) {
@@ -311,7 +451,8 @@ public class MainActivity extends Activity {
                         e.printStackTrace();
                     }
                 }
-            }
+            }*/
+
 
             count = 1;
 
@@ -330,8 +471,8 @@ public class MainActivity extends Activity {
         v = v + x * ((double)delta_t)/1000d;
         textView6.setText("vvv: " + v*100 + "cm/s");
 
-        textView2.setText("x:" + l_a[0]*100 + "\ny:" + l_a[1]*100 + "\nz:" + l_a[2]*100 + "\ng:" + Math.sqrt(l_a[0]*l_a[0]+l_a[1]*l_a[1]+l_a[2]*l_a[2]) + "\njiange: " + (end - start));
-        textView7.setText("pos: " + pos*100 + "cm");
+        textView2.setText("x:" + l_a[0]*100 + "\ny:" + l_a[1]*100 + "\nz:" + l_a[2]*100 + "\ng:" + Math.sqrt(l_a[0]*l_a[0]+l_a[1]*l_a[1]+l_a[2]*l_a[2]) + "\njiange: " + (end - start) + "\nasd:" + (a_t-g_t));
+        textView7.setText("\nyaw: " + oula[0] + "\npitch: " + oula[1] + "\nroll: " + oula[2] + "\nt_x: " + t_a[0] + "\nt_y: " + t_a[1] + "\nt_z: " + t_a[2]);
 
         Log.d(TAG, "l_a - x: " + (l_a[1] - x));
         Log.d(TAG, "k: " + k);
