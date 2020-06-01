@@ -263,7 +263,7 @@ public class MainActivity extends Activity {
         linearaccSensor = new AccelerationSensor(this);
         linearaccSensor.register(linearaccObserver);
         linearaccSensor.start();
-        gyroscopeSensor = new GyroscopeSensor(this);
+        gyroscopeSensor = new ComplementaryGyroscopeSensor(this);
         gyroscopeSensor.register(gyroscopeObserver);
         gyroscopeSensor.start();
         ((MeanFilter) baseFilter).setTimeConstant((float) 0.5);
@@ -379,9 +379,12 @@ public class MainActivity extends Activity {
         l_a[2] = l_a[2]-t_g[2];
 
         float[] t_a = new float[3];
-        t_a[0] = (float)((Math.cos(b)*Math.cos(c) + Math.sin(a)*Math.sin(b)*Math.sin(c))*l_a[0] + Math.cos(a)*Math.sin(c)*l_a[1] + (Math.cos(b)*Math.sin(a)*Math.sin(c) - Math.cos(c)*Math.sin(b))*l_a[2]);
+        t_a[0] = ((float)((Math.cos(b)*Math.cos(c) + Math.sin(a)*Math.sin(b)*Math.sin(c))*l_a[0] + Math.cos(a)*Math.sin(c)*l_a[1] + (Math.cos(b)*Math.sin(a)*Math.sin(c) - Math.cos(c)*Math.sin(b))*l_a[2]));
         t_a[1] = (float)((Math.cos(c)*Math.sin(a)*Math.sin(b) - Math.cos(b)*Math.sin(c))*l_a[0] + Math.cos(a)*Math.cos(c)*l_a[1] + (Math.sin(b)*Math.sin(c) + Math.cos(b)*Math.cos(c)*Math.sin(a))*l_a[2]);
         t_a[2] = (float)(Math.cos(a)*Math.sin(b)*l_a[0] + (-Math.sin(a))*l_a[1] + Math.cos(a)*Math.cos(b)*l_a[2]);
+        /*t_a[0] = (float) l_a[0];
+        t_a[1] = (float) l_a[1];
+        t_a[2] = (float) l_a[2];*/
         t_a = ((MeanFilter) baseFilter).filter(t_a);
         /*if(Math.abs(l_a[0]) < 0.01){
             x = 0;
