@@ -260,7 +260,7 @@ public class MainActivity extends Activity {
         //sm.registerListener(myListener2, lSensor, 0);
         //sm.registerListener(myListener4, rSensor, 0);
         baseFilter = new MeanFilter();
-        linearaccSensor = new AccelerationSensor(this);
+        linearaccSensor = new ComplementaryLinearAccelerationSensor(this);
         linearaccSensor.register(linearaccObserver);
         linearaccSensor.start();
         gyroscopeSensor = new ComplementaryGyroscopeSensor(this);
@@ -356,9 +356,9 @@ public class MainActivity extends Activity {
         //oula2[2] = (float)Math.toDegrees(oula2[2]);
         oula[1] = Math.toDegrees(rotationvector[1]);
         oula[2] = Math.toDegrees(rotationvector[2]);
-        double a = oula[1]*Math.PI/180;
-        double b = oula[2]*Math.PI/180;
-        double c = oula[0]*Math.PI/180;
+        double a = oula[1]*Math.PI/180; //pitch
+        double b = oula[2]*Math.PI/180; //roll
+        double c = oula[0]*Math.PI/180; //yaw
 
         //double[] t_g = new double[3]
         //double acc = Math.sqrt(t_a[0]*t_a[0] + t_a[1]*t_a[1] + t_a[2]*t_a[2]);
@@ -386,6 +386,9 @@ public class MainActivity extends Activity {
         t_a[1] = (float) l_a[1];
         t_a[2] = (float) l_a[2];*/
         t_a = ((MeanFilter) baseFilter).filter(t_a);
+        t_a[0] = (float)accelerometerValues[0];
+        t_a[1] = (float)accelerometerValues[1];
+        t_a[2] = (float)accelerometerValues[2];
         /*if(Math.abs(l_a[0]) < 0.01){
             x = 0;
         }else {
